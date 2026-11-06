@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#10111b">
+<title>EchoLoop — Audio Recorder & Repeater</title>
+<style>
+:root{
+  color-scheme:dark;
+  --bg:#10111b;--panel:#191c2b;--soft:#24283b;--line:#343950;
+  --text:#f4f4fa;--muted:#9ba2ba;--accent:#a78bfa;
+  --green:#54d6a0;--red:#ff647c;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+header,main{width:min(760px,100%);margin:auto}
+header{padding:26px 19px 12px}
+.logo{font-size:28px;font-weight:850;letter-spacing:-1.3px}
+.logo span{color:var(--accent)}
+header p{margin:5px 0 0;color:var(--muted);font-size:13px}
+main{padding:10px 16px 50px}
+.card{background:var(--panel);border:1px solid #30344a;padding:19px;border-radius:17px;margin-bottom:15px}
+h2{font-size:16px;margin:0 0 16px}
+h3{font-size:13px;margin:0 0 11px}
+label{display:block;color:var(--muted);font-size:12px;margin-bottom:7px}
+input{width:100%;padding:12px;background:var(--soft);border:1px solid #3b4059;border-radius:10px;color:var(--text);font-size:14px;outline:none}
+input:focus{border-color:var(--accent)}
+input[type=file]{font-size:12px}
+button{border:0;border-radius:10px;padding:12px 15px;background:var(--accent);color:#171323;font-weight:750;font-size:13px;cursor:pointer}
+button:disabled{opacity:.38;cursor:not-allowed}
+.secondary{background:var(--soft);color:var(--text)}
+.green{background:var(--green);color:#10251c}
+.danger{background:#512735;color:#ffb6c2}
+.small{padding:8px 10px;font-size:11px}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.note{color:var(--muted);font-size:11px;line-height:1.6;margin-top:12px}
+.status{font-size:12px;color:var(--muted);margin-top:12px;line-height:1.5}
+.library-item{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--soft);padding:12px;border-radius:12px;margin-top:9px}
+.library-item.active{border:1px solid var(--accent)}
+.track-info{flex:1;min-width:0}
+.track-name{font-size:13px;font-weight:700;overflow-wrap:anywhere}
+.track-meta{font-size:10px;color:var(--muted);margin-top:4px}
+.track-actions{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+.empty{text-align:center;padding:22px;color:var(--muted);font-size:12px}
+.player{background:#111421;padding:13px;border-radius:12px;margin-top:12px}
+audio{width:100%;height:38px;margin-top:9px}
+.counter{text-align:center;padding:15px 0 5px}
+.counter strong{font-size:43px;color:var(--accent);font-variant-numeric:tabular-nums}
+.counter p{font-size:12px;color:var(--muted);margin:4px}
+.progress{height:6px;background:#34384c;border-radius:20px;overflow:hidden;margin:15px 0}
+.progress div{height:100%;width:0;background:var(--accent);transition:width .2s}
+.timer-display{text-align:center;font-size:27px;font-weight:750;font-variant-numeric:tabular-nums}
+.timer-label{text-align:center;font-size:11px;color:var(--muted);margin-top:3px}
+.wide{width:100%;margin-top:9px}
+hr{border:0;border-top:1px solid #30344a;margin:18px 0}
+.hint{padding:11px 12px;border-radius:10px;background:#202438;color:var(--muted);font-size:11px;line-height:1.55}
+@media(max-width:460px){.card{padding:15px}.library-item{align-items:flex-start}.grid{gap:9px}.track-actions{max-width:125px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Echo<span>Loop.</span></div>
+  <p>Record once. Replay on your schedule.</p>
+</header>
+
+<main>
+  <section class="card">
+    <h2>01 / Record audio</h2>
+    <label for="recordName">Recording name</label>
+    <input id="recordName" maxlength="80" placeholder="e.g. Morning affirmation">
+    <div class="actions">
+      <button id="recordBtn">● Record</button>
+      <button id="pauseRecBtn" class="secondary" disabled>Pause</button>
+      <button id="stopRecBtn" class="danger" disabled>Stop &amp; Save</button>
+    </div>
+    <div class="status" id="recStatus" role="status">Ready to record.</div>
+    <p class="note">Microphone permission is required. Recording works on HTTPS (GitHub Pages) or localhost.</p>
+  </section>
+
+  <section class="card">
+    <h2>02 / Import audio</h2>
+    <label for="importFiles">Choose audio files from your device</label>
+    <input id="importFiles" type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.opus,.webm" multiple>
+    <p class="note">Imported files are copied into this browser's local audio library.</p>
+  </section>
+
+  <section class="card">
+    <h2>03 / Your audio library</h2>
+    <div id="library"><div class="empty">Loading your library…</div></div>
+  </section>
+
+  <section class="card">
+    <h2>04 / Playback settings</h2>
+    <div id="selectedInfo" class="empty">Select a recording from your library.</div>
+    <div id="previewBox" hidden>
+      <div class="track-name" id="selectedName"></div>
+      <div class="player"><audio id="preview" controls preload="metadata"></audio></div>
+    </div>
+    <hr>
+    <h3>Repetition &amp; timers</h3>
+    <div class="grid">
+      <div>
+        <label for="repeatCount">Number of repetitions</label>
+        <input id="repeatCount" type="number" min="0" max="999999" step="1" value="5">
+      </div>
+      <div>
+        <label for="startDelay">Start delay (seconds)</label>
+        <input id="startDelay" type="number" min="0" max="86400" step="1" value="0">
+      </div>
+      <div>
+        <label for="repeatGap">Gap between repetitions (seconds)</label>
+        <input id="repeatGap" type="number" min="0" max="86400" step="1" value="5">
+      </div>
+      <div>
+        <label for="totalLimit">Total playback limit (minutes)</label>
+        <input id="totalLimit" type="number" min="0" max="100000" step="0.5" value="0">
+      </div>
+    </div>
+    <p class="note">
+      Set repetitions to <b>0</b> for continuous repeat until stopped. Set total playback limit to <b>0</b> for no time limit. The total playback timer starts after the initial delay.
+    </p>
+    <div class="hint">Example: choose a recording, set a 60-second start delay, 20 repetitions, a 10-second gap, and a 30-minute playback limit.</div>
+  </section>
+
+  <section class="card">
+    <h2>05 / Playback controller</h2>
+    <div class="counter">
+      <strong id="repeatNumber">0 / 5</strong>
+      <p>Completed repetitions</p>
+    </div>
+    <div class="progress"><div id="progressBar"></div></div>
+    <div class="timer-display" id="clock">00:00:00</div>
+    <div class="timer-label" id="clockLabel">Ready</div>
+    <div class="actions">
+      <button id="startBtn" class="green" style="flex:1">▶ Start</button>
+      <button id="pauseBtn" class="secondary" style="flex:1" disabled>Ⅱ Pause</button>
+      <button id="stopBtn" class="danger" style="flex:1" disabled>■ Stop</button>
+    </div>
+    <div class="status" id="playStatus" style="text-align:center" role="status">Waiting for a recording.</div>
+  </section>
+
+  <section class="card">
+    <h2>06 / Storage &amp; reliability</h2>
+    <p class="note">
+      Recordings are stored in IndexedDB on this device and browser. They are not uploaded to GitHub. Use the Save button beside a recording to download a backup. Clearing browser site data can erase the library.
+      <br><br>
+      Keep this page open during playback. Android may pause audio or suspend timers when the browser is backgrounded, the screen locks, or battery management intervenes. Screen-wake support is requested when available, but cannot guarantee uninterrupted background playback.
+    </p>
+  </section>
+</main>
+/* Playback and timer engine */
+function setStatus(message) {
+  $("playStatus").textContent = message;
+}
+
+function updateCounter() {
+  $("repeatNumber").textContent = currentCount + " / " + (repeatLimit === 0 ? "∞" : repeatLimit);
+  $("progressBar").style.width = repeatLimit === 0
+    ? "0%"
+    : Math.min(100, currentCount / repeatLimit * 100) + "%";
+}
+
+function updateClock() {
+  if (!running) return;
+
+  let remaining = 0;
+  if (phase === "delay" || phase === "gap") {
+    remaining = paused ? phaseRemaining : Math.max(0, phaseDeadline - Date.now());
+  } else if (phase === "playing" && totalLimitMs > 0) {
+    remaining = paused ? totalRemaining : Math.max(0, totalDeadline - Date.now());
+  }
+
+  $("clock").textContent = formatTime(remaining);
+
+  const labels = {
+    delay: "Starting in",
+    gap: "Next repetition in",
+    playing: totalLimitMs > 0 ? "Playback time remaining" : "Playing",
+    idle: "Ready",
+    finished: "Finished"
+  };
+  $("clockLabel").textContent = paused ? "Paused" : (labels[phase] || "Ready");
+}
+
+function clearTimers() {
+  clearTimeout(phaseTimer);
+  clearTimeout(totalTimer);
+  phaseTimer = null;
+  totalTimer = null;
+}
+
+function schedulePhase(milliseconds, nextPhase, callback) {
+  clearTimeout(phaseTimer);
+  phase = nextPhase;
+  phaseRemaining = Math.max(0, milliseconds);
+  phaseDeadline = Date.now() + phaseRemaining;
+  updateClock();
+
+  if (phaseRemaining === 0) {
+    callback();
+    return;
+  }
+
+  phaseTimer = setTimeout(() => {
+    phaseTimer = null;
+    phaseRemaining = 0;
+    if (running && !paused) callback();
+  }, phaseRemaining);
+}
+
+function startTotalTimer() {
+  if (totalLimitMs <= 0 || !running) return;
+
+  clearTimeout(totalTimer);
+  totalRemaining = totalLimitMs;
+  totalDeadline = Date.now() + totalRemaining;
+
+  totalTimer = setTimeout(() => {
+    if (running) finishPlayback("Total playback timer completed.");
+  }, totalRemaining);
+}
+
+function playOneRepetition() {
+  if (!running || paused) return;
+
+  if (repeatLimit !== 0 && currentCount >= repeatLimit) {
+    finishPlayback("All repetitions completed.");
+    return;
+  }
+
+  phase = "playing";
+  updateClock();
+  setStatus("Playing repetition " + (currentCount + 1) + "…");
+
+  audio.currentTime = 0;
+  const promise = audio.play();
+  if (promise && typeof promise.catch === "function") {
+    promise.catch(error => {
+      if (running && !paused) finishPlayback("Playback could not start: " + error.message);
+    });
+  }
+}
+
+audio.addEventListener("ended", () => {
+  if (!running || paused || phase !== "playing") return;
+
+  currentCount++;
+  updateCounter();
+
+  if (repeatLimit !== 0 && currentCount >= repeatLimit) {
+    finishPlayback("All repetitions completed.");
+    return;
+  }
+
+  if (totalLimitMs > 0 && Date.now() >= totalDeadline) {
+    finishPlayback("Total playback timer completed.");
+    return;
+  }
+
+  setStatus("Repetition completed.");
+  schedulePhase(gapMs, "gap", playOneRepetition);
+});
+
+audio.addEventListener("error", () => {
+  if (running && !paused) finishPlayback("Audio playback error. Check that this file is supported.");
+});
+
+function finishPlayback(message) {
+  clearTimers();
+  running = false;
+  paused = false;
+  phase = "finished";
+  audio.pause();
+
+  $("startBtn").disabled = false;
+  $("pauseBtn").disabled = true;
+  $("stopBtn").disabled = true;
+  $("pauseBtn").textContent = "Ⅱ Pause";
+
+  $("clock").textContent = "00:00:00";
+  $("clockLabel").textContent = "Finished";
+  setStatus(message);
+  releaseWakeLock();
+}
+
+function stopPlayback(showMessage = true) {
+  clearTimers();
+  running = false;
+  paused = false;
+  phase = "idle";
+  audio.pause();
+  try { audio.currentTime = 0; } catch (_) {}
+
+  $("startBtn").disabled = false;
+  $("pauseBtn").disabled = true;
+  $("stopBtn").disabled = true;
+  $("pauseBtn").textContent = "Ⅱ Pause";
+  $("clock").textContent = "00:00:00";
+  $("clockLabel").textContent = "Stopped";
+
+  releaseWakeLock();
+  if (showMessage) setStatus("Playback stopped manually.");
+}
+
+async function requestWakeLock() {
+  try {
+    if ("wakeLock" in navigator && document.visibilityState === "visible") {
+      if (wakeLock) return;
+      wakeLock = await navigator.wakeLock.request("screen");
+      wakeLock.addEventListener("release", () => { wakeLock = null; }, { once: true });
+    }
+  } catch (error) {
+    console.info("Screen wake lock unavailable:", error.message);
+  }
+}
+
+async function releaseWakeLock() {
+  if (!wakeLock) return;
+  const lock = wakeLock;
+  wakeLock = null;
+  try { await lock.release(); } catch (_) {}
+}
+
+$("startBtn").addEventListener("click", async () => {
+  if (running) return;
+
+  try {
+    if (!selectedId) throw new Error("Select a recording from your library first.");
+
+    const item = recordings.find(recording => recording.id === selectedId);
+    if (!item) throw new Error("The selected recording could not be found.");
+
+    repeatLimit = getNumber("repeatCount", 0, 999999);
+    startDelayMs = getNumber("startDelay", 0, 86400) * 1000;
+    gapMs = getNumber("repeatGap", 0, 86400) * 1000;
+    totalLimitMs = getNumber("totalLimit", 0, 100000) * 60000;
+
+    if (selectedURL) URL.revokeObjectURL(selectedURL);
+    selectedURL = URL.createObjectURL(item.blob);
+    $("preview").src = selectedURL;
+    $("preview").load();
+
+    audio.pause();
+    audio.src = selectedURL;
+    audio.load();
+
+    currentCount = 0;
+    running = true;
+    paused = false;
+    phase = "idle";
+    totalDeadline = 0;
+    totalRemaining = 0;
+    updateCounter();
+
+    $("startBtn").disabled = true;
+    $("pauseBtn").disabled = false;
+    $("stopBtn").disabled = false;
+
+    await requestWakeLock();
+    setStatus("Playback session started.");
+
+    if (startDelayMs > 0) {
+      setStatus("Waiting for the start delay…");
+      schedulePhase(startDelayMs, "delay", () => {
+        startTotalTimer();
+        playOneRepetition();
+      });
+    } else {
+      startTotalTimer();
+      playOneRepetition();
+    }
+  } catch (error) {
+    stopPlayback(false);
+    setStatus(error.message);
+    alert(error.message);
+  }
+});
+
+$("pauseBtn").addEventListener("click", () => {
+  if (!running) return;
+
+  if (!paused) {
+    paused = true;
+
+    if (phase === "delay" || phase === "gap") {
+      clearTimeout(phaseTimer);
+      phaseTimer = null;
+      phaseRemaining = Math.max(0, phaseDeadline - Date.now());
+    } else if (phase === "playing") {
+      audio.pause();
+    }
+
+    if (totalLimitMs > 0 && totalDeadline > 0) {
+      clearTimeout(totalTimer);
+      totalTimer = null;
+      totalRemaining = Math.max(0, totalDeadline - Date.now());
+    }
+
+    $("pauseBtn").textContent = "▶ Resume";
+    setStatus("Playback paused. Timers are paused too.");
+    updateClock();
+    return;
+  }
+
+  paused = false;
+  $("pauseBtn").textContent = "Ⅱ Pause";
+
+  if (totalLimitMs > 0 && totalDeadline > 0) {
+    totalDeadline = Date.now() + totalRemaining;
+    totalTimer = setTimeout(() => {
+      if (running) finishPlayback("Total playback timer completed.");
+    }, totalRemaining);
+  }
+
+  if (phase === "playing") {
+    audio.play().catch(error => {
+      if (running) finishPlayback("Could not resume playback: " + error.message);
+    });
+  } else if (phase === "delay" || phase === "gap") {
+    const resumePhase = phase;
+    schedulePhase(phaseRemaining, resumePhase, () => {
+      if (resumePhase === "delay") startTotalTimer();
+      playOneRepetition();
+    });
+  }
+
+  setStatus("Playback resumed.");
+  updateClock();
+});
+
+$("stopBtn").addEventListener("click", () => stopPlayback(true));
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && running && !paused) {
+    requestWakeLock();
+    updateClock();
+  }
+});
+
+window.addEventListener("pagehide", () => {
+  audio.pause();
+  if (mediaRecorder && mediaRecorder.state !== "inactive") {
+    try { mediaRecorder.stop(); } catch (_) {}
+  }
+});
+
+setInterval(() => {
+  if (running) updateClock();
+}, 250);
+
+/* Initialize local database */
+(async function initialize() {
+  try {
+    if (!("indexedDB" in window)) throw new Error("This browser does not support local audio storage.");
+    db = await openDatabase();
+    await refreshLibrary();
+    $("recStatus").textContent = "Library ready. Record or import audio.";
+  } catch (error) {
+    $("library").textContent = "Storage error: " + error.message;
+    $("recStatus").textContent = "Initialization failed.";
+  }
+})();
+</script>
+</body>
+</html>
